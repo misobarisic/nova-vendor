@@ -113,3 +113,11 @@ The temporary bundle archives and unused local vendor repository were removed.
 The app consumes the source-built outputs through its Android/Windows Nix
 shells, with native notices and CA roots derived from the same dependencies.
 Entering either shell rebuilds missing outputs from the committed recipe.
+
+## Release archive comparison
+
+The published v0.1.0 Android bundles match the local bundles exactly. Windows
+runtime DLLs and all other contents also match, except for build timestamps in
+the seven `.dll.a` archive index headers and the resulting `SHA256SUMS` entries.
+Complete Windows SDK archives are therefore not byte-for-byte reproducible.
+Nova pins the hash of the published CI bundle, including those import libraries.
