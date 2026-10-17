@@ -1,0 +1,69 @@
+name: Native media bundles
+
+on:
+  pull_request:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [android-arm64, android-armv7, android-x86_64, mingw-x86_64, sources]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Free unused Android SDK space
+        run: sudo rm -rf /usr/local/lib/android
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+        with:
+          github_access_token: ${{ github.token }}
+      - name: Build and validate archive
+        env:
+          MEDIA_TARGET: ${{ matrix.target }}
+        run: |
+          archive=$(nix build ".#archive-$MEDIA_TARGET" --no-link --print-out-paths --max-jobs 2 --cores 4)
+          mkdir -p dist
+          cp "$archive" "dist/nova-media-$MEDIA_TARGET.tar.gz"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-${{ matrix.target }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: Publish native media release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: native-*
+          merge-multiple: true
+          path: dist
+      - name: Hash release archives
+        run: cd dist && sha256sum *.tar.gz > SHA256SUMS
+      - uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        with:
+          name: Nova native media ${{ github.ref_name }}
+          body: |
+            Minimal mpv 0.41.0 / FFmpeg 9.0.1 bundles for Android and Windows.
+            Includes playback, hardware decoding and packet-copy remuxing.
+            Audio/video transcoding encoders are excluded.
+
+            Runtime/SDK bundles contain notices, build metadata and per-file hashes.
+            The sources archive includes the corresponding upstream sources and locked recipe.
+          fail_on_unmatched_files: true
+          files: dist/*
