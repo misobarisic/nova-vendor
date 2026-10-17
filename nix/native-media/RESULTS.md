@@ -92,6 +92,34 @@ All three Android ABIs linked a separate API-26 shared-library probe against
 mpv and FFmpeg's JavaVM registration with no undefined symbols. The CA bundle
 parsed successfully, and the built cargo-apk2 contains the runtime override.
 
+## Android loader regression
+
+The v0.1.0 Android libmpv bundles passed the earlier dependency-name checks and
+shared-library link probes, but retained strong C++ runtime imports. Inspecting
+the actual ARM64 payload found unresolved float/double `std::__ndk1::to_chars`,
+`std::terminate`, `__cxa_begin_catch` and `__gxx_personality_v0`. Neither the
+bundle nor Android's system libraries supplied them. The C-linked mpv target did
+not use the runtime flags supplied only for C++ link targets, and mpv's upstream
+`b_lundef=false` allowed that broken shared library to be produced. The earlier
+probe result above therefore did not establish Android loader compatibility.
+
+The recipe now adds the NDK's static `libc++.a` dependency explicitly and enables
+undefined-symbol rejection for Android libmpv. The inspector resolves strong
+dynamic imports against the entire bundle and API-26 system stubs. This check
+rejects the original ARM64 release payload with the five imports listed above.
+Separate ARM64, ARMv7 and x86_64 C++20 probes exercised float/double `to_chars`
+and exceptions, then linked successfully with the C driver and the API-26
+`libc++.a` script without `libc++_shared.so`. These were compile/link checks only;
+no emulator or QEMU was used. All three rebuilt Android bundles now pass the
+full dynamic-symbol, API, architecture and alignment checks. The Windows bundle
+also passes its import/build-profile checks. Nova's repeated packaging probe
+built a universal APK twice, then verified runtime symbol providers from each
+ABI's extracted media payload against API-26 system stubs.
+
+The corrected Android runtime totals are 15,165,128 bytes (ARM64), 13,376,264
+bytes (ARMv7) and 19,600,968 bytes (x86_64). The feature/encoder profile is
+unchanged; the increase supplies the previously missing static C++ runtime.
+
 ## Boundaries and useful findings
 
 - No Android device was connected. Android probes linked successfully, but

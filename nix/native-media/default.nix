@@ -373,6 +373,17 @@ let
       mpv = base "mpv" pkgs.mpv-unwrapped {
         postPatch =
           "patchShebangs TOOLS/*.py"
+          + lib.optionalString target.android ''
+
+            # mpv links C sources with the C driver, even though static
+            # dependencies (notably libplacebo) contain C++. cpp_link_args
+            # therefore cannot provide their runtime. The API-level NDK
+            # libc++.a linker script includes libc++_static and libc++abi in
+            # the correct order, without a libc++_shared.so dependency.
+            substituteInPlace meson.build \
+              --replace-fail "libmpv = library('mpv', sources," \
+              ${lib.escapeShellArg "dependencies += cc.find_library('c++', static: true)\nlibmpv = library('mpv', sources,"}
+          ''
           + lib.optionalString (!target.android) ''
 
             # Meson adds an explicit -lstdc++ for link_language: 'cpp', which
@@ -409,7 +420,7 @@ let
             } \
             ${
               if target.android then
-                "-Degl=enabled -Degl-android=enabled -Dopensles=enabled -Dandroid-media-ndk=enabled -Dc_link_args='-Wl,--gc-sections ${pageFlags}' -Dcpp_link_args='-Wl,--gc-sections -static-libstdc++ ${pageFlags}'"
+                "-Db_lundef=true -Degl=enabled -Degl-android=enabled -Dopensles=enabled -Dandroid-media-ndk=enabled -Dc_link_args='-Wl,--gc-sections ${pageFlags}' -Dcpp_link_args='-Wl,--gc-sections -static-libstdc++ ${pageFlags}'"
               else
                 "-Dwasapi=enabled -Dwin32-threads=enabled -Dgl-win32=enabled -Dd3d-hwaccel=enabled -Dgl-dxinterop=enabled -Dc_link_args='-Wl,--gc-sections -static-libgcc -L${mcfgthreads}/lib'"
             }
@@ -571,6 +582,7 @@ let
             PY
             python3 ${./inspect.py} "$out" --target ${name} \
               --tool ${if target.android then "${bin}/llvm-readelf" else "${bin}/${target.triple}-objdump"} \
+              ${lib.optionalString target.android "--system-libs ${bin}/../sysroot/usr/lib/${if target.cpu == "arm" then "arm-linux-androideabi" else target.triple}/26"} \
               > $out/share/nova-native/validation.txt
             cat $out/share/nova-native/validation.txt
             (cd $out && find lib include share -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)

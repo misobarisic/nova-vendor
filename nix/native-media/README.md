@@ -70,7 +70,18 @@ Vulkan headers and fast_float are build-time headers only.
 64-bit Android libraries pass both `max-page-size=16384` and
 `common-page-size=16384` to the linker, following the
 [NDK r27-and-earlier guidance](https://developer.android.com/guide/practices/page-sizes#compile-r27).
-The C++ runtime is static, avoiding a separate r26 `libc++_shared.so`.
+mpv's C linker explicitly includes the API-level NDK `libc++.a` linker
+script, which supplies `libc++_static` and `libc++abi`. C++-only linker flags
+are insufficient because mpv's own sources are C, while its static dependencies
+include C++. Undefined symbols are rejected when linking libmpv; no separate
+r26 `libc++_shared.so` is needed.
+
+The bundle inspector also checks every strong dynamic import against the
+packaged libraries and the API-26 NDK system stubs, including symbol versions.
+This catches unresolved imports in shared-library dependencies that a successful
+shared-library link probe can miss. Weak imports may remain unresolved, as
+Android permits. The build passes `--system-libs` with each target's API-level
+NDK library directory; manual Android inspection requires the same argument.
 
 ## Smoke probe
 

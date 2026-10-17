@@ -20,6 +20,7 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("bundle", type=pathlib.Path)
 parser.add_argument("--target", required=True)
 parser.add_argument("--tool", required=True, help="target readelf (Android) or objdump (MinGW)")
+parser.add_argument("--system-libs", type=pathlib.Path, help="API-level Android NDK system stubs")
 args = parser.parse_args()
 root = args.bundle
 
@@ -38,6 +39,39 @@ if args.target.startswith("android-"):
     require({path.name for path in libraries} == expected, "unexpected Android library set")
     system = {"libc.so", "libm.so", "libdl.so", "libandroid.so", "libOpenSLES.so", "libEGL.so", "libGLESv2.so", "libmediandk.so", "liblog.so"}
     machine = {"android-arm64": "AArch64", "android-armv7": "ARM", "android-x86_64": "Advanced Micro Devices X86-64"}[args.target]
+    require(args.system_libs is not None, "Android validation needs --system-libs for the minimum API level")
+    require(all((args.system_libs / name).is_file() for name in system), "incomplete Android system stub directory")
+
+    def dynamic_symbols(library):
+        required, exported = set(), set()
+        for line in output(args.tool, "--dyn-syms", "--wide", str(library)).splitlines():
+            fields = line.split()
+            if len(fields) < 8 or not fields[0].rstrip(":").isdigit():
+                continue
+            symbol, _, version = fields[7].partition("@")
+            key = (symbol, version.lstrip("@") or None)
+            if fields[6] == "UND":
+                # Unresolved weak imports are valid: the loader resolves them
+                # to null. Strong imports must have a real runtime provider.
+                if fields[4] == "GLOBAL":
+                    required.add(key)
+            elif fields[4] in {"GLOBAL", "WEAK"} and fields[5] in {"DEFAULT", "PROTECTED"}:
+                exported.add(key)
+                if version.startswith("@"):
+                    exported.add((symbol, None))
+        return required, exported
+
+    providers = set()
+    imports = {}
+    for library in libraries + sorted(args.system_libs / name for name in system):
+        required, exported = dynamic_symbols(library)
+        providers.update(exported)
+        if library in libraries:
+            imports[library.name] = required
+    for name, required in imports.items():
+        missing = sorted((symbol + ("@" + version if version else "")) for symbol, version in required - providers)
+        require(not missing, f"unresolved strong dynamic symbols in {name}: {', '.join(missing)}")
+
     for library in libraries:
         header = output(args.tool, "-h", str(library))
         require(machine in header, f"wrong architecture: {library.name}")
@@ -74,4 +108,4 @@ else:
     exports = output(args.tool, "-p", str(root / "lib/avformat-63.dll"))
     require("av_interleaved_write_frame" in exports, "missing public FFmpeg remux API")
 
-print(f"{args.target}: {len(libraries)} libraries; dependencies, APIs and build profile verified")
+print(f"{args.target}: {len(libraries)} libraries; dependencies, APIs, runtime symbols and build profile verified")
