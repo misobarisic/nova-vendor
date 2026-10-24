@@ -74,7 +74,7 @@ static void listening_filters(void)
                      layouts[layout]);
             snprintf(chain, sizeof(chain), "volume=0.5,%s%s%salimiter=limit=0.89:level=false",
                      mask & 1 ? "equalizer=f=2000:t=q:w=1:g=4," : "",
-                     mask & 2 ? "dynaudnorm=f=250:g=15:p=0.8:m=3:r=0.18," : "",
+                     mask & 2 ? "dynaudnorm=f=150:g=9:p=0.8:m=3:r=0.18," : "",
                      mask & 4 ? "acompressor=threshold=0.125:ratio=4:attack=10:release=250:makeup=1.5," : "");
             check(avfilter_graph_create_filter(&source, avfilter_get_by_name("abuffer"),
                                                "input", source_args, NULL, graph), "create audio source");
