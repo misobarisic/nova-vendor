@@ -5,6 +5,7 @@
 
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
+#include <libavfilter/avfilter.h>
 #include <libavutil/error.h>
 #include <mpv/client.h>
 
@@ -44,6 +45,56 @@ static void capabilities(void)
     }
     printf("FFmpeg %s; libmpv API %lu; required capabilities present\n",
            av_version_info(), mpv_client_api_version());
+}
+
+/* Build the same real-time chain used by Nova, including automatic format
+ * negotiation. Checking names alone would miss incompatible filter options or
+ * channel layouts. No audio device, external fixture or encoder is required. */
+static void listening_filters(void)
+{
+    const char *filters[] = {"abuffer", "abuffersink", "volume", "equalizer",
+                             "dynaudnorm", "acompressor", "alimiter"};
+    for (size_t i = 0; i < sizeof(filters) / sizeof(*filters); i++) {
+        if (!avfilter_get_by_name(filters[i])) {
+            fprintf(stderr, "missing listening filter: %s\n", filters[i]);
+            exit(1);
+        }
+    }
+    const char *layouts[] = {"mono", "stereo", "5.1"};
+    for (size_t layout = 0; layout < sizeof(layouts) / sizeof(*layouts); layout++) {
+        for (int mask = 1; mask < 8; mask++) {
+            AVFilterGraph *graph = avfilter_graph_alloc();
+            AVFilterContext *source = NULL, *sink = NULL;
+            AVFilterInOut *inputs = avfilter_inout_alloc();
+            AVFilterInOut *outputs = avfilter_inout_alloc();
+            if (!graph || !inputs || !outputs) exit(1);
+            char source_args[160], chain[512];
+            snprintf(source_args, sizeof(source_args),
+                     "time_base=1/48000:sample_rate=48000:sample_fmt=fltp:channel_layout=%s",
+                     layouts[layout]);
+            snprintf(chain, sizeof(chain), "volume=0.5,%s%s%salimiter=limit=0.89:level=false",
+                     mask & 1 ? "equalizer=f=2000:t=q:w=1:g=4," : "",
+                     mask & 2 ? "dynaudnorm=f=250:g=15:p=0.8:m=3:r=0.18," : "",
+                     mask & 4 ? "acompressor=threshold=0.125:ratio=4:attack=10:release=250:makeup=1.5," : "");
+            check(avfilter_graph_create_filter(&source, avfilter_get_by_name("abuffer"),
+                                               "input", source_args, NULL, graph), "create audio source");
+            check(avfilter_graph_create_filter(&sink, avfilter_get_by_name("abuffersink"),
+                                               "output", NULL, NULL, graph), "create audio sink");
+            outputs->name = av_strdup("in");
+            outputs->filter_ctx = source;
+            outputs->pad_idx = 0;
+            inputs->name = av_strdup("out");
+            inputs->filter_ctx = sink;
+            inputs->pad_idx = 0;
+            if (!outputs->name || !inputs->name) exit(1);
+            check(avfilter_graph_parse_ptr(graph, chain, &inputs, &outputs, NULL), "parse listening chain");
+            check(avfilter_graph_config(graph, NULL), "configure listening chain");
+            avfilter_inout_free(&inputs);
+            avfilter_inout_free(&outputs);
+            avfilter_graph_free(&graph);
+        }
+    }
+    puts("all seven listening combinations configured for mono, stereo and 5.1");
 }
 
 static void playback(const char *source)
@@ -147,6 +198,8 @@ static void remux(const char *source, const char *destination, const char *forma
 
 int main(int argc, char **argv)
 {
+    listening_filters();
+    if (argc == 2 && !strcmp(argv[1], "--audio-filters")) return 0;
     capabilities();
     if (argc != 4) {
         fprintf(stderr, "usage: %s INPUT OUTPUT FORMAT\n", argv[0]);

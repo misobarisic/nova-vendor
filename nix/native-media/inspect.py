@@ -29,6 +29,11 @@ encoders = set(re.findall(r"^CONFIG_(\w+)_ENCODER=yes$", config, re.M))
 require(encoders == {"FRAME_THREAD", "PNG", "MJPEG"}, f"unexpected encoders: {encoders}")
 require(re.search(r"^CONFIG_PGSSUB_DECODER=yes$", config, re.M), "PGS decoding is missing")
 require(re.search(r"^CONFIG_LIBDAV1D_DECODER=yes$", config, re.M), "dav1d decoding is missing")
+# These components are deliberately opt-in under --disable-everything. Reject
+# an older/minimal audio profile before publishing any architecture's bundle.
+for audio_filter in ("VOLUME", "EQUALIZER", "DYNAUDNORM", "ACOMPRESSOR", "ALIMITER"):
+    require(re.search(r"^CONFIG_" + audio_filter + r"_FILTER=yes$", config, re.M),
+            f"listening filter is missing: {audio_filter.lower()}")
 pcs = list((root / "lib/pkgconfig").glob("*.pc"))
 require(len(pcs) == 7, f"expected seven pkg-config modules, found {len(pcs)}")
 require(all("/nix/store/" not in pc.read_text() for pc in pcs), "pkg-config is not relocatable")

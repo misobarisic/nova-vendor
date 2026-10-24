@@ -270,7 +270,7 @@ let
             --enable-demuxer=matroska,mov,mpegts,mpegps,avi,asf,hls,aac,ac3,eac3,mp3,ogg,flac,wav,h264,hevc,ivf,ass,srt,webvtt,microdvd,mpl2,subviewer,sami,realtext,subrip,ttml,sup,image2 \
             --enable-parser=h264,hevc,av1,vp8,vp9,aac,aac_latm,ac3,dca,flac,mpegaudio,mpeg4video,mpegvideo,opus,vorbis,vc1,png,webp \
             --enable-bsf=aac_adtstoasc,extract_extradata,h264_mp4toannexb,hevc_mp4toannexb,av1_frame_merge,av1_frame_split,vp9_superframe,vp9_superframe_split \
-            --enable-filter=abuffer,abuffersink,buffer,buffersink,aformat,aresample,atempo,anull,null,format,scale,transpose,volume,pan,bwdif,yadif \
+            --enable-filter=abuffer,abuffersink,buffer,buffersink,aformat,aresample,atempo,anull,null,format,scale,transpose,volume,pan,bwdif,yadif,equalizer,dynaudnorm,acompressor,alimiter \
             --enable-encoder=png,mjpeg \
             --enable-muxer=mp4,mov,hls,mpegts,matroska,webvtt \
             --enable-zlib ${
@@ -450,7 +450,7 @@ let
             "$CC" -O2 -Wall -Wextra -Werror ${pageFlags} ${
               lib.optionalString (!target.android) "-L${mcfgthreads}/lib -static-libgcc"
             } ${./smoke.c} -o $out/bin/smoke${lib.optionalString (!target.android) ".exe"} \
-              $(pkg-config --cflags --libs mpv libavformat libavcodec libavutil)
+              $(pkg-config --cflags --libs mpv libavformat libavcodec libavfilter libavutil)
           '';
       bundle =
         pkgs.runCommand "nova-native-media-${name}"

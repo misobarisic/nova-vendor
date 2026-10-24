@@ -52,6 +52,7 @@ FFmpeg copy is built into mpv. The Windows C++ runtime is linked statically.
 | Windows | MinGW x86_64, WASAPI, embedded OpenGL, D3D11 hardware decoding with copy-back |
 | Video | H.264, HEVC, AV1 (dav1d), VP8/9, MPEG-1/2/4, VC-1/WMV3, Theora and still-image decoding |
 | Audio | AAC, AC-3/E-AC-3, DTS, MP2/3, FLAC, ALAC, Opus, Vorbis, WMA and common PCM formats |
+| Listening filters | Speech-frequency EQ (`equalizer`), real-time leveling (`dynaudnorm`), dynamic-range compression (`acompressor`) and peak limiting (`alimiter`) |
 | Subtitles | libass with FreeType, HarfBuzz shaping and FriBidi; text and bitmap decoders, including PGS |
 | Inputs | Common movie/audio containers, HLS, HTTP(S), local files, pipes and file descriptors |
 | Remux outputs | MP4/MOV, fragmented-MP4 HLS, MPEG-TS, Matroska, WebVTT |
@@ -85,8 +86,17 @@ NDK library directory; manual Android inspection requires the same argument.
 
 ## Smoke probe
 
-`smoke.c` checks that the selected muxers/decoders exist and that no unexpected
-encoders were enabled. It then decodes the input to EOF using headless mpv and
+`smoke.c` configures all seven combinations of Nova's three listening options
+for mono, stereo and 5.1 audio, validating filter availability, options and
+format negotiation. Run `smoke --audio-filters` for this fixture-free check.
+The bundle inspector also rejects any architecture whose build configuration
+omits a required listening filter. Dialogue enhancement boosts speech frequencies;
+it does not isolate voices. Leveling adapts during playback rather than measuring
+a whole file in advance. These filters require decoded PCM and do not process
+compressed audio passthrough.
+
+The full smoke probe checks that the selected muxers/decoders exist and that no
+unexpected encoders were enabled. It then decodes the input to EOF using headless mpv and
 remuxes its timestamped audio/video packets through the public FFmpeg API. It accepts:
 
 ```text
